@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Trash2, Check, X, Edit2, Save } from 'lucide-react';
+import axios from 'axios';
 
 // Functional Component using ES6 Arrow Function
 const TodoApp = () => {
@@ -10,52 +11,105 @@ const TodoApp = () => {
   const [editValue, setEditValue] = useState('');
   const [filter, setFilter] = useState('all');
 
-  // useEffect Hook for component lifecycle
+  // useEffect Hook - Fetch todos from backend on mount
   useEffect(() => {
-    // Load todos from memory (simulating localStorage behavior)
-    const savedTodos = [
-      { id: 1, text: 'Learn React Basics', completed: true },
-      { id: 2, text: 'Understand Virtual DOM', completed: false },
-      { id: 3, text: 'Practice ES6 Features', completed: false }
-    ];
-    setTodos(savedTodos);
+    axios.get('http://localhost:5000/api/todos')
+      .then(res => {
+        setTodos(res.data.data);
+      })
+      .catch(err => {
+        console.error('Error fetching todos:', err);
+        // Fallback to demo data if backend is not available
+        const savedTodos = [
+          { _id: '1', title: 'Learn React Basics', completed: true },
+          { _id: '2', title: 'Understand Virtual DOM', completed: false },
+          { _id: '3', title: 'Practice ES6 Features', completed: false }
+        ];
+        setTodos(savedTodos);
+      });
   }, []); // Empty dependency array - runs once on mount
 
-  // ES6 Arrow Functions
+  // ES6 Arrow Functions - Add todo to backend
   const addTodo = () => {
     if (inputValue.trim() !== '') {
-      const newTodo = {
-        id: Date.now(), // Simple ID generation
-        text: inputValue,
-        completed: false
-      };
-      // ES6 Spread Operator
-      setTodos([...todos, newTodo]);
-      setInputValue('');
+      axios.post('http://localhost:5000/api/todos', { title: inputValue })
+        .then(res => {
+          setTodos([...todos, res.data.data]);
+          setInputValue('');
+        })
+        .catch(err => {
+          console.error('Error adding todo:', err);
+          // Fallback to local state if backend fails
+          const newTodo = {
+            _id: Date.now().toString(),
+            title: inputValue,
+            completed: false
+          };
+          setTodos([...todos, newTodo]);
+          setInputValue('');
+        });
     }
   };
 
-  // ES6 Arrow Function with implicit return
-  const deleteTodo = (id) => todos.filter(todo => todo.id !== id);
-
-  const toggleComplete = (id) => {
-    // ES6 Map method with arrow function
-    setTodos(todos.map(todo => 
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ));
+  // Delete todo from backend
+  const deleteTodo = (id) => {
+    axios.delete(`http://localhost:5000/api/todos/${id}`)
+      .then(() => {
+        setTodos(todos.filter(todo => todo._id !== id));
+      })
+      .catch(err => {
+        console.error('Error deleting todo:', err);
+        // Fallback to local state if backend fails
+        setTodos(todos.filter(todo => todo._id !== id));
+      });
   };
 
-  const startEdit = (id, text) => {
+  // Toggle completion status
+  const toggleComplete = (id) => {
+    const todo = todos.find(t => t._id === id);
+    const updatedTodo = { ...todo, completed: !todo.completed };
+    
+    // Try to update on backend (you may need to add PUT endpoint)
+    axios.put(`http://localhost:5000/api/todos/${id}`, updatedTodo)
+      .then(res => {
+        setTodos(todos.map(todo => 
+          todo._id === id ? res.data.data : todo
+        ));
+      })
+      .catch(err => {
+        console.error('Error updating todo:', err);
+        // Fallback to local state
+        setTodos(todos.map(todo => 
+          todo._id === id ? { ...todo, completed: !todo.completed } : todo
+        ));
+      });
+  };
+
+  const startEdit = (id, title) => {
     setEditingId(id);
-    setEditValue(text);
+    setEditValue(title);
   };
 
   const saveEdit = (id) => {
-    setTodos(todos.map(todo =>
-      todo.id === id ? { ...todo, text: editValue } : todo
-    ));
-    setEditingId(null);
-    setEditValue('');
+    const updatedTodo = { title: editValue };
+    
+    axios.put(`http://localhost:5000/api/todos/${id}`, updatedTodo)
+      .then(res => {
+        setTodos(todos.map(todo =>
+          todo._id === id ? res.data.data : todo
+        ));
+        setEditingId(null);
+        setEditValue('');
+      })
+      .catch(err => {
+        console.error('Error updating todo:', err);
+        // Fallback to local state
+        setTodos(todos.map(todo =>
+          todo._id === id ? { ...todo, title: editValue } : todo
+        ));
+        setEditingId(null);
+        setEditValue('');
+      });
   };
 
   const cancelEdit = () => {
@@ -95,7 +149,7 @@ const TodoApp = () => {
     }`}>
       <div className="flex items-center space-x-3 flex-1">
         <button
-          onClick={() => toggleComplete(todo.id)}
+          onClick={() => toggleComplete(todo._id)}
           className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
             todo.completed 
               ? 'bg-green-500 border-green-500 text-white' 
@@ -105,27 +159,27 @@ const TodoApp = () => {
           {todo.completed && <Check size={14} />}
         </button>
         
-        {editingId === todo.id ? (
+        {editingId === todo._id ? (
           <input
             type="text"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={(e) => handleEditKeyPress(e, todo.id)}
+            onKeyDown={(e) => handleEditKeyPress(e, todo._id)}
             className="flex-1 px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
             autoFocus
           />
         ) : (
           <span className={`flex-1 ${todo.completed ? 'line-through text-gray-500' : 'text-gray-800'}`}>
-            {todo.text}
+            {todo.title}
           </span>
         )}
       </div>
       
       <div className="flex space-x-2">
-        {editingId === todo.id ? (
+        {editingId === todo._id ? (
           <>
             <button
-              onClick={() => saveEdit(todo.id)}
+              onClick={() => saveEdit(todo._id)}
               className="p-1 text-green-600 hover:bg-green-100 rounded"
             >
               <Save size={16} />
@@ -140,13 +194,13 @@ const TodoApp = () => {
         ) : (
           <>
             <button
-              onClick={() => startEdit(todo.id, todo.text)}
+              onClick={() => startEdit(todo._id, todo.title)}
               className="p-1 text-blue-600 hover:bg-blue-100 rounded"
             >
               <Edit2 size={16} />
             </button>
             <button
-              onClick={() => setTodos(deleteTodo(todo.id))}
+              onClick={() => deleteTodo(todo._id)}
               className="p-1 text-red-600 hover:bg-red-100 rounded"
             >
               <Trash2 size={16} />
@@ -168,7 +222,7 @@ const TodoApp = () => {
       <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6">
         <h1 className="text-3xl font-bold text-center">React Todo App</h1>
         <p className="text-center mt-2 opacity-90">
-          Demonstrating Functional Components & ES6 Features
+          Full-Stack Todo App with MongoDB Backend
         </p>
       </div>
 
@@ -233,14 +287,14 @@ const TodoApp = () => {
           </div>
         ) : (
           filteredTodos.map(todo => (
-            <TodoItem key={todo.id} todo={todo} />
+            <TodoItem key={todo._id} todo={todo} />
           ))
         )}
       </div>
 
       {/* Footer with ES6 Info */}
       <div className="p-4 bg-gray-50 text-center text-sm text-gray-600">
-        <p>Built with React Functional Components, Hooks, and ES6+ Features</p>
+        <p>Full-Stack React App with Express.js & MongoDB Backend</p>
       </div>
     </div>
   );
